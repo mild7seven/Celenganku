@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catatan Keuangan</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; background-color: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2, h3 { color: #333; margin-top: 0; }
+        label { display: block; margin-top: 10px; font-size: 14px; color: #666; }
+        input, select, button { width: 100%; padding: 10px; margin-top: 5px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+        
+        button { background-color: #0056b3; color: white; border: none; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        button:hover { background-color: #004494; }
+        .btn-danger { background-color: #dc3545; margin-top: 25px; }
+        .btn-danger:hover { background-color: #c82333; }
+
+        .budget-list { list-style: none; padding: 0; }
+        .budget-list li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .amount { font-weight: bold; }
+        
+        .total-section { border-top: 2px solid #ccc; margin-top: 15px; padding-top: 15px; }
+        .total-row { display: flex; justify-content: space-between; font-size: 16px; margin-bottom: 8px; }
+        .status-badge { font-weight: bold; font-size: 18px; }
+        .surplus { color: #28a745; }
+        .minus { color: #dc3545; }
+
+        /* Style untuk Riwayat Transaksi */
+        .history-list { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; }
+        .history-item { padding: 12px 0; border-bottom: 1px solid #eee; }
+        .history-header { display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 5px; }
+        .history-body { display: flex; justify-content: space-between; align-items: center; }
+        .history-kategori { font-weight: bold; font-size: 14px; color: #333; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Catatan Keuangan</h2>
+        <p>Gaji Pokok (Mandiri): <strong>Rp 5.161.769</strong></p>
+    </div>
+
+    <div class="card">
+        <h3>Input Transaksi Manual</h3>
+        
+        <label for="jenis">Jenis Transaksi:</label>
+        <select id="jenis">
+            <option value="pengeluaran">Pengeluaran (Mengurangi Saldo)</option>
+            <option value="pemasukan">Pemasukan / Dana Lain (Menambah Saldo)</option>
+        </select>
+
+        <label for="kategori">Kategori:</label>
+        <select id="kategori">
+            <option value="Bulanan">Kebutuhan Bulanan (53%)</option>
+            <option value="Bensin">Biaya Bensin (20%)</option>
+            <option value="Koperasi">Kasbon Koperasi (10%)</option>
+            <option value="Bank">Hutang Bank (7%)</option>
+            <option value="STNK">Cicilan Pajak STNK (5%)</option>
+            <option value="Service">Service Mobil (5%)</option>
+            <option value="Dana Lain BCA">Dana Lain (BCA)</option>
+        </select>
+
+        <label for="nominal">Nominal (Rp):</label>
+        <input type="number" id="nominal" placeholder="Contoh: 150000" required>
+
+        <button onclick="prosesTransaksi()">Catat Transaksi</button>
+    </div>
+
+    <div class="card">
+        <h3>Sisa Saldo Alokasi</h3>
+        <ul class="budget-list" id="saldoList">
+            <!-- Saldo kategori akan dirender di sini -->
+        </ul>
+
+        <div class="total-section">
+            <div class="total-row">
+                <span>Total Sisa Saldo:</span>
+                <span id="totalSisa" class="amount">Rp 0</span>
+            </div>
+            <div class="total-row">
+                <span>Selisih vs Gaji Pokok:</span>
+                <span id="statusSelisih" class="status-badge">Rp 0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Riwayat Transaksi</h3>
+        <ul class="history-list" id="riwayatList">
+            <!-- Riwayat transaksi akan dirender di sini -->
+        </ul>
+        
+        <button class="btn-danger" onclick="resetBulanBaru()">Reset Data (Bulan Baru)</button>
+    </div>
+
+    <script>
+        const GAJI_POKOK = 5161769;
+
+        // Alokasi awal berdasarkan persentase gaji
+        const budgetAwal = {
+            "Bulanan": 2735738,
+            "Bensin": 1032354,
+            "Koperasi": 516177,
+            "Bank": 361324,
+            "STNK": 258088,
+            "Service": 258088,
+            "Dana Lain BCA": 0
+        };
+
+        // Mengambil Saldo dari Local Storage
+        function getSaldo() {
+            let saldo = JSON.parse(localStorage.getItem('saldoKeuangan'));
+            if (!saldo) {
+                saldo = { ...budgetAwal };
+                localStorage.setItem('saldoKeuangan', JSON.stringify(saldo));
+            }
+            return saldo;
+        }
+
+        // Mengambil Riwayat dari Local Storage
+        function getRiwayat() {
+            let riwayat = JSON.parse(localStorage.getItem('riwayatKeuangan'));
+            return riwayat ? riwayat : [];
+        }
+
+        // Format angka ke Rupiah
+        function formatRupiah(angka) {
+            const absAngka = Math.abs(angka);
+            const formatted = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(absAngka);
+            return angka < 0 ? `-${formatted}` : formatted;
+        }
+
+        // Render Saldo ke Layar
+        function renderSaldo() {
+            const saldo = getSaldo();
+            const saldoList = document.getElementById('saldoList');
+            saldoList.innerHTML = '';
+            
+            let totalSisa = 0;
+
+            for (let [kategori, nominal] of Object.entries(saldo)) {
+                saldoList.innerHTML += `<li><span>${kategori}</span> <span class="amount">${formatRupiah(nominal)}</span></li>`;
+                totalSisa += nominal;
+            }
+
+            const selisih = totalSisa - GAJI_POKOK;
+            document.getElementById('totalSisa').innerText = formatRupiah(totalSisa);
+            
+            const statusElement = document.getElementById('statusSelisih');
+            statusElement.innerText = formatRupiah(selisih);
+
+            if (selisih >= 0) {
+                statusElement.className = "status-badge surplus";
+            } else {
+                statusElement.className = "status-badge minus";
+            }
+        }
+
+        // Render Riwayat ke Layar
+        function renderRiwayat() {
+            const riwayat = getRiwayat();
+            const riwayatList = document.getElementById('riwayatList');
+            riwayatList.innerHTML = '';
+
+            if (riwayat.length === 0) {
+                riwayatList.innerHTML = '<li style="text-align:center; color:#999; padding: 10px 0;">Belum ada riwayat transaksi.</li>';
+                return;
+            }
+
+            riwayat.forEach(item => {
+                const isPengeluaran = item.jenis === 'pengeluaran';
+                const sign = isPengeluaran ? '-' : '+';
+                const colorClass = isPengeluaran ? 'minus' : 'surplus';
+                
+                riwayatList.innerHTML += `
+                    <li class="history-item">
+                        <div class="history-header">
+                            <span>${item.tanggal}</span>
+                            <span>${item.jenis.toUpperCase()}</span>
+                        </div>
+                        <div class="history-body">
+                            <span class="history-kategori">${item.kategori}</span>
+                            <span class="amount ${colorClass}">${sign} ${formatRupiah(item.nominal)}</span>
+                        </div>
+                    </li>
+                `;
+            });
+        }
+
+        // Proses Eksekusi Transaksi
+        function prosesTransaksi() {
+            const jenis = document.getElementById('jenis').value;
+            const kategori = document.getElementById('kategori').value;
+            const nominal = parseInt(document.getElementById('nominal').value);
+
+            if (!nominal || nominal <= 0) {
+                alert('Masukkan nominal yang valid!');
+                return;
+            }
+
+            // Update Saldo
+            let saldo = getSaldo();
+            if (jenis === 'pengeluaran') {
+                saldo[kategori] -= nominal;
+            } else {
+                saldo[kategori] += nominal;
+            }
+            localStorage.setItem('saldoKeuangan', JSON.stringify(saldo));
+
+            // Simpan Riwayat Waktu
+            const waktuSekarang = new Date().toLocaleString('id-ID', {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute:'2-digit'
+            });
+
+            let riwayat = getRiwayat();
+            riwayat.unshift({ // Memasukkan data baru ke urutan paling atas
+                tanggal: waktuSekarang,
+                jenis: jenis,
+                kategori: kategori,
+                nominal: nominal
+            });
+            localStorage.setItem('riwayatKeuangan', JSON.stringify(riwayat));
+            
+            // Bersihkan input dan perbarui layar
+            document.getElementById('nominal').value = '';
+            renderSaldo();
+            renderRiwayat();
+        }
+
+        // Fungsi Reset Data untuk Bulan Baru
+        function resetBulanBaru() {
+            const konfirmasi = confirm("Apakah Anda yakin ingin mereset seluruh data? Saldo akan kembali ke alokasi awal gajian dan riwayat akan dihapus.");
+            if (konfirmasi) {
+                localStorage.setItem('saldoKeuangan', JSON.stringify(budgetAwal));
+                localStorage.removeItem('riwayatKeuangan');
+                renderSaldo();
+                renderRiwayat();
+                alert("Data berhasil direset untuk bulan baru!");
+            }
+        }
+
+        // Pendaftaran Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+            .catch(err => console.log("Service Worker gagal didaftarkan:", err));
+        }
+
+        // Jalankan render saat aplikasi pertama kali dibuka
+        renderSaldo();
+        renderRiwayat();
+    </script>
+</body>
+</html>
